@@ -6,9 +6,15 @@ Two small machines running my home infrastructure, with host configuration and c
 
 ## Architecture
 
-![Architecture](docs/architecture.drawio.svg)
+[![Architecture](docs/architecture.drawio.png)](https://raw.githubusercontent.com/OzDomer/homelab/main/docs/architecture.drawio.png)
 
-<sub>Click to open full size.</sub>
+<p align="center">
+  <a href="https://raw.githubusercontent.com/OzDomer/homelab/main/docs/architecture.drawio.png">
+    <img src="docs/architecture.drawio.png" alt="Architecture">
+  </a>
+  <br>
+  <sub>Click to open full size.</sub>
+</p>
 
 | Host | Hardware | Runs |
 |---|---|---|
