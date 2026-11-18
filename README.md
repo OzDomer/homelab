@@ -6,8 +6,6 @@ Two small machines running my home infrastructure, with host configuration and c
 
 ## Architecture
 
-[![Architecture](docs/architecture.drawio.png)](https://raw.githubusercontent.com/OzDomer/homelab/main/docs/architecture.drawio.png)
-
 <p align="center">
   <a href="https://raw.githubusercontent.com/OzDomer/homelab/main/docs/architecture.drawio.png">
     <img src="docs/architecture.drawio.png" alt="Architecture">
