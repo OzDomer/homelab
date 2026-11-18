@@ -1,0 +1,10 @@
+[Unit]
+Description=Nightly staging of dionysus config, before athena's 03:30 backup
+
+[Timer]
+OnCalendar=*-*-* 02:45:00
+RandomizedDelaySec=10m
+Persistent=true
+
+[Install]
+WantedBy=timers.target

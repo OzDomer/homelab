@@ -1,0 +1,129 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":dependencyDashboard"
+  ],
+  "timezone": "Asia/Jerusalem",
+  "schedule": [
+    "* 0-5 * * 6"
+  ],
+  "automerge": false,
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "The caddy-dns/cloudflare plugin that xcaddy compiles into Caddy",
+      "managerFilePatterns": [
+        "/(^|/)Dockerfile$/"
+      ],
+      "matchStrings": [
+        "--with (?<depName>github\\.com/caddy-dns/cloudflare)@(?<currentValue>v\\S+)"
+      ],
+      "datasourceTemplate": "go"
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "linuxserver.io tags: <version>-lsNN, e.g. 3.4.7-r0-ls106 (socket-proxy). The -lsNN build counter only ever grows, so it is compared after the version.",
+      "matchDatasources": [
+        "docker"
+      ],
+      "matchPackageNames": [
+        "lscr.io/linuxserver/**"
+      ],
+      "versioning": "regex:^v?(?<major>\\d+)\\.(?<minor>\\d+)(?:\\.(?<patch>\\d+))?(?:\\.\\d+)?(?:ubu\\d+)?(?:_v\\d+(?:\\.\\d+)*)?-ls(?<build>\\d+)$"
+    },
+    {
+      "description": "All linuxserver.io images in one PR",
+      "matchDatasources": [
+        "docker"
+      ],
+      "matchPackageNames": [
+        "lscr.io/linuxserver/**"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch"
+      ],
+      "groupName": "linuxserver"
+    },
+    {
+      "description": "Both AdGuard Home instances must always run the same version",
+      "matchPackageNames": [
+        "adguard/adguardhome"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch"
+      ],
+      "groupName": "adguardhome"
+    },
+    {
+      "description": "Caddy builder, runtime image and the cloudflare plugin are rebuilt together",
+      "matchPackageNames": [
+        "caddy",
+        "github.com/caddy-dns/cloudflare"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch"
+      ],
+      "groupName": "caddy"
+    },
+    {
+      "description": "Prometheus, node-exporter and Grafana in one PR",
+      "matchPackageNames": [
+        "prom/prometheus",
+        "prom/node-exporter",
+        "grafana/grafana",
+        "grafana/loki",
+        "grafana/alloy"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch"
+      ],
+      "groupName": "monitoring"
+    },
+    {
+      "description": "GitHub Actions in one PR",
+      "matchManagers": [
+        "github-actions"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch"
+      ],
+      "groupName": "github-actions"
+    },
+    {
+      "description": "bot-arena images are pinned by digest on the main tag: one PR per new build, not held for Saturday",
+      "matchPackageNames": [
+        "ghcr.io/ozdomer/bot-arena-*"
+      ],
+      "groupName": "arena",
+      "schedule": [
+        "at any time"
+      ]
+    },
+    {
+      "description": "SearXNG tags are <year>.<month>.<day>-<commit>: compare the date, ignore the commit hash",
+      "matchDatasources": [
+        "docker"
+      ],
+      "matchPackageNames": [
+        "searxng/searxng"
+      ],
+      "versioning": "regex:^(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)-[0-9a-f]+$"
+    },
+    {
+      "description": "Major updates are never grouped (the groups above only take minor/patch) and are labelled so they stand out",
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "labels": [
+        "major"
+      ]
+    }
+  ]
+}

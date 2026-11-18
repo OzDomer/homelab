@@ -1,0 +1,48 @@
+# Runs only with an explicit `--tags firewall` (see site.yaml). A wrong rule
+# can cut SSH off and lock Ansible out of a host, so firewall changes are a
+# deliberate run of their own (dry-run first, one host at a time) and never
+# ride along with a normal deploy or the GitHub button.
+# The module only adds rules: one removed from here stays on the host until
+# `sudo ufw delete ...` by hand.
+
+- name: Install ufw
+  ansible.builtin.apt:
+    name: ufw
+    state: present
+    update_cache: true
+    cache_valid_time: 86400
+
+# SSH first, before the default policy and before ufw is enabled.
+- name: Allow SSH from the LAN
+  community.general.ufw:
+    rule: allow
+    from_ip: "{{ firewall_ssh_from }}"
+    to_port: "22"
+    proto: tcp
+
+- name: Allow all incoming traffic on the Tailscale interface
+  community.general.ufw:
+    rule: allow
+    direction: in
+    interface: tailscale0
+
+- name: Allow the host-specific rules from host_vars
+  community.general.ufw:
+    rule: allow
+    from_ip: "{{ item.from_ip }}"
+    to_ip: "{{ item.to_ip }}"
+    to_port: "{{ item.port | string }}"
+    proto: "{{ item.proto | default(omit) }}"
+    comment: "{{ item.comment | default(omit) }}"
+  loop: "{{ firewall_rules }}"
+  loop_control:
+    label: "{{ item.from_ip }} -> {{ item.to_ip }}:{{ item.port }}"
+
+- name: Deny incoming traffic by default
+  community.general.ufw:
+    default: deny
+    direction: incoming
+
+- name: Enable ufw
+  community.general.ufw:
+    state: enabled

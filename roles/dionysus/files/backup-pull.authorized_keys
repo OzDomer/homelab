@@ -1,0 +1,1 @@
+from="192.168.1.165",restrict,command="/usr/bin/rrsync -ro /var/backups/dionysus-staging" ssh-ed25519 AAAA...replace-with-your-key

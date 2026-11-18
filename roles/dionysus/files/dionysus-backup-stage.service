@@ -1,0 +1,8 @@
+[Unit]
+Description=Stage dionysus app config for athena's backup
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/dionysus-backup-stage
+Nice=10
+IOSchedulingClass=idle

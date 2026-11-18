@@ -1,0 +1,102 @@
+# --- packages
+# Backup tools and the kiosk's compositor + browser. state: present, never latest.
+- name: Install packages athena needs
+  ansible.builtin.apt:
+    name: [restic, rclone, cage, chromium]
+    state: present
+    update_cache: true
+    cache_valid_time: 86400
+
+# --- backup
+- name: Install backup script
+  ansible.builtin.copy:
+    src: athena-backup
+    dest: /usr/local/sbin/athena-backup
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Install backup units
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: /etc/systemd/system/
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - athena-backup.service
+    - athena-backup.timer
+
+- name: Enable backup timer
+  ansible.builtin.systemd_service:
+    name: athena-backup.timer
+    enabled: true
+    state: started
+    daemon_reload: true
+
+# --- network
+- name: Install NetworkManager dispatcher script that turns EEE off on eth0
+  ansible.builtin.copy:
+    src: 90-eee-off
+    dest: /etc/NetworkManager/dispatcher.d/90-eee-off
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install sysctl that allows binding to not-yet-assigned IPs
+  ansible.builtin.copy:
+    src: 99-nonlocal-bind.conf
+    dest: /etc/sysctl.d/99-nonlocal-bind.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Apply nonlocal bind sysctl
+
+# athena is wired. NetworkManager keeps the radio state across reboots, so it
+# only needs switching off once; the check makes a run report ok when it's off.
+- name: Check whether the Wi-Fi radio is on
+  ansible.builtin.command: nmcli radio wifi
+  register: athena_wifi_radio
+  changed_when: false
+  check_mode: false
+
+- name: Turn the Wi-Fi radio off
+  ansible.builtin.command: nmcli radio wifi off
+  when: athena_wifi_radio.stdout != "disabled"
+  changed_when: true
+
+# --- kiosk
+- name: Create kiosk user
+  ansible.builtin.user:
+    name: kiosk
+    system: true
+    create_home: true
+    shell: /usr/sbin/nologin
+    groups: [video, render]
+    append: true
+
+- name: Install kiosk service
+  ansible.builtin.copy:
+    src: kiosk.service
+    dest: /etc/systemd/system/kiosk.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart kiosk
+
+- name: Install udev rule that hides HDMI-CEC inputs from the kiosk
+  ansible.builtin.copy:
+    src: 90-kiosk-ignore-cec.rules
+    dest: /etc/udev/rules.d/90-kiosk-ignore-cec.rules
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload udev rules
+    - Restart kiosk
+
+- name: Enable kiosk
+  ansible.builtin.systemd_service:
+    name: kiosk.service
+    enabled: true
+    daemon_reload: true

@@ -1,0 +1,19 @@
+# strategy: free is safe here: no run_once is used, and the hosts don't depend on each other
+- name: Homelab
+  hosts: homelab
+  become: true
+  strategy: free
+  roles:
+    - role: common
+      tags: common
+    - role: firewall
+      tags: [firewall, never]
+    - role: stacks
+      tags: stacks
+  tasks:
+    - name: Apply host-specific system config
+      ansible.builtin.include_role:
+        name: "{{ inventory_hostname }}"
+        apply:
+          tags: system
+      tags: system

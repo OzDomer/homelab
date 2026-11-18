@@ -1,0 +1,51 @@
+// Where every log line ends up.
+loki.write "default" {
+  endpoint {
+    url = "https://loki.example.com/loki/api/v1/push"
+
+    basic_auth {
+      username = "dionysus"
+      password = sys.env("LOKI_PASSWORD")
+    }
+  }
+}
+
+// Containers: find them through the socket proxy and read their logs.
+discovery.docker "containers" {
+  host = "tcp://socket-proxy:2375"
+}
+
+discovery.relabel "containers" {
+  targets = []
+
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "container"
+  }
+}
+
+loki.source.docker "containers" {
+  host          = "tcp://socket-proxy:2375"
+  targets       = discovery.docker.containers.targets
+  labels        = {host = "dionysus", source = "docker"}
+  relabel_rules = discovery.relabel.containers.rules
+  forward_to    = [loki.write.default.receiver]
+}
+
+// System journal: sshd, the kernel (ufw blocks), systemd units.
+loki.relabel "journal" {
+  forward_to = []
+
+  rule {
+    source_labels = ["__journal__systemd_unit"]
+    target_label  = "unit"
+  }
+}
+
+loki.source.journal "system" {
+  max_age       = "12h"
+  relabel_rules = loki.relabel.journal.rules
+  labels        = {host = "dionysus", source = "journal"}
+  forward_to    = [loki.write.default.receiver]
+}

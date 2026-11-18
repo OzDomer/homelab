@@ -1,0 +1,5 @@
+#!/bin/sh
+# EEE makes eth0's link flap (Pi 5 + Sagemcom router), so turn it off every time eth0 comes up
+if [ "$1" = "eth0" ] && [ "$2" = "up" ]; then
+  /usr/sbin/ethtool --set-eee eth0 eee off
+fi

@@ -1,0 +1,25 @@
+services:
+  opencanary:
+    image: thinkst/opencanary:0.9.10
+    container_name: opencanary
+    restart: unless-stopped
+    environment:
+      CANARY_NTFY_AUTH: ${CANARY_NTFY_AUTH}
+    ports:
+      - "192.168.1.165:21:21"
+      - "192.168.1.165:23:23"
+      - "192.168.1.165:3306:3306"
+      - "192.168.1.165:3389:3389"
+      - "192.168.1.165:5900:5900"
+    volumes:
+      - ./opencanary.conf:/root/.opencanary.conf:ro
+    tmpfs:
+      - /run
+    networks:
+      - default
+      - alerts
+    mem_limit: 256m
+
+networks:
+  alerts:
+    external: true

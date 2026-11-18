@@ -1,0 +1,23 @@
+[Unit]
+Description=Kiosk: Uptime Kuma status page on Helios (cage + Chromium)
+After=systemd-user-sessions.service dbus.socket systemd-logind.service docker.service
+Wants=dbus.socket systemd-logind.service
+Conflicts=getty@tty1.service
+After=getty@tty1.service
+
+[Service]
+User=kiosk
+PAMName=login
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+TTYVTDisallocate=yes
+StandardInput=tty-fail
+UtmpIdentifier=tty1
+UtmpMode=user
+ExecStart=/usr/bin/cage -s -- /usr/bin/chromium --kiosk --incognito --noerrdialogs --no-first-run --password-store=basic --ozone-platform=wayland http://127.0.0.1:3001/status/helios
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

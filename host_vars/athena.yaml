@@ -1,0 +1,42 @@
+stacks_proxy_network: true
+stacks_internal_networks: [search, alerts]
+stacks_list:
+  - path: athena/caddy
+    dest: caddy
+    restart_on_config: [caddy]
+  - path: athena/vaultwarden
+    dest: vaultwarden
+  - path: athena/uptime-kuma
+    dest: uptime-kuma
+  - path: athena/ntfy
+    dest: ntfy
+    restart_on_config: [ntfy]
+  - path: athena/opencanary
+    dest: opencanary
+    restart_on_config: [opencanary]
+  - path: athena/adguard
+    dest: adguard
+  - path: athena/searxng
+    dest: searxng
+    restart_on_config: [searxng]
+  - path: athena/monitoring
+    dest: monitoring
+    restart_on_config: [prometheus, grafana, loki]
+  - path: athena/alloy
+    dest: alloy
+    restart_on_config: [alloy]
+# Containers on the proxy network (172.20.0.0/16) reaching a port on athena
+# itself skip Docker's DNAT and hit ufw's INPUT chain, so they need these.
+# Comments match the rules already on athena exactly.
+firewall_rules:
+  # Kuma's DNS check on AdGuard. No proto: one rule for tcp and udp.
+  - from_ip: 172.20.0.0/16
+    to_ip: 192.168.1.165
+    port: 53
+    comment: containers -> adguard dns
+  # Prometheus scraping node-exporter (host network, listens on the bridge IP).
+  - from_ip: 172.20.0.0/16
+    to_ip: 172.20.0.1
+    port: 9100
+    proto: tcp
+    comment: prometheus -> node-exporter

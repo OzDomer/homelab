@@ -1,0 +1,55 @@
+services:
+  searxng:
+    image: searxng/searxng:2026.11.14-a7128d5d1
+    container_name: searxng
+    restart: unless-stopped
+    environment:
+      SEARXNG_BASE_URL: https://search.example.com/
+      SEARXNG_SECRET: ${SEARXNG_SECRET}
+      SEARXNG_VALKEY_URL: valkey://searxng-valkey:6379/0
+      FORCE_OWNERSHIP: "false"
+    volumes:
+      - ./settings.yaml:/etc/searxng/settings.yml:ro
+      - searxng-cache:/var/cache/searxng
+    depends_on:
+      - searxng-valkey
+      - gluetun-search
+    networks:
+      - search
+    mem_limit: 512m
+
+  searxng-valkey:
+    image: valkey/valkey:9.1.3-alpine
+    container_name: searxng-valkey
+    restart: unless-stopped
+    command: valkey-server --save "" --loglevel warning
+    networks:
+      - search
+    mem_limit: 64m
+
+  gluetun-search:
+    image: qmcgaw/gluetun:v3.41.3
+    container_name: gluetun-search
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    environment:
+      TZ: Asia/Jerusalem
+      VPN_SERVICE_PROVIDER: protonvpn
+      VPN_TYPE: wireguard
+      WIREGUARD_PRIVATE_KEY: ${WIREGUARD_PRIVATE_KEY}
+      SERVER_COUNTRIES: Switzerland
+      HTTPPROXY: "on"
+    networks:
+      - search
+      - default
+    mem_limit: 128m
+
+volumes:
+  searxng-cache:
+
+networks:
+  search:
+    external: true

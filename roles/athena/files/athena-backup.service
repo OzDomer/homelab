@@ -1,0 +1,10 @@
+[Unit]
+Description=Back up athena's app state to Google Drive with restic
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/athena-backup
+Nice=10
+IOSchedulingClass=idle

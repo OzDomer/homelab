@@ -1,0 +1,5 @@
+stacks_list: []
+stacks_root: "/home/{{ ansible_user }}/stacks"
+stacks_update: false
+stacks_proxy_network: false
+stacks_internal_networks: []

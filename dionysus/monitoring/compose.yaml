@@ -1,0 +1,13 @@
+services:
+  node-exporter:
+    image: prom/node-exporter:v1.12.1
+    container_name: node-exporter
+    restart: unless-stopped
+    network_mode: host
+    pid: host
+    command:
+      - --path.rootfs=/host
+      - --web.listen-address=192.168.1.166:9100
+      - --collector.netdev.device-exclude=^(veth.*|br-.*|docker0|lo)$
+    volumes:
+      - /:/host:ro,rslave

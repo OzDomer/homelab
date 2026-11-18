@@ -1,0 +1,9 @@
+homelab:
+  hosts:
+    athena:
+      ansible_host: 192.168.1.165
+    dionysus:
+      ansible_host: 192.168.1.166
+  vars:
+    ansible_user: domer
+    ansible_python_interpreter: /usr/bin/python3

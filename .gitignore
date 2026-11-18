@@ -1,0 +1,11 @@
+# Secrets
+.env
+*.env
+dionysus/arena/credentials.json
+
+
+# Container data and state (backed up separately, or regenerable)
+**/data/
+**/config/
+athena/adguard/work/
+athena/adguard/conf/

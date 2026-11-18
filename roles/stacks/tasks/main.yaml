@@ -1,0 +1,72 @@
+- name: Copy stack files
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/{{ item.path }}/"
+    dest: "{{ stacks_root }}/{{ item.dest | default(item.path) }}/"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: "0644"
+  loop: "{{ stacks_list }}"
+  loop_control:
+    label: "{{ item.path }}"
+  register: stacks_copied
+
+# Every athena stack joins the external "proxy" network. Compose won't create
+# it, so a fresh host would fail every 'up' without this.
+- name: Ensure the shared proxy network exists
+  ansible.builtin.command: docker network create proxy
+  register: stacks_network_create
+  changed_when: stacks_network_create.rc == 0
+  failed_when: stacks_network_create.rc != 0 and 'already exists' not in stacks_network_create.stderr
+  when: stacks_proxy_network
+
+# Networks with no route out (--internal). A stack that must not reach the
+# internet or the other stacks directly joins one, and so does whatever has to
+# talk to it.
+- name: Ensure internal networks exist
+  ansible.builtin.command: docker network create --internal {{ item }}
+  register: stacks_internal_network_create
+  changed_when: stacks_internal_network_create.rc == 0
+  failed_when: >-
+    stacks_internal_network_create.rc != 0
+    and 'already exists' not in stacks_internal_network_create.stderr
+  loop: "{{ stacks_internal_networks }}"
+
+- name: Read the internal flag of each internal network
+  ansible.builtin.command: >-
+    docker network inspect --format '{% raw %}{{ .Internal }}{% endraw %}' {{ item }}
+  register: stacks_internal_network_flag
+  changed_when: false
+  check_mode: false
+  loop: "{{ stacks_internal_networks }}"
+
+- name: Fail if an internal network has a route out
+  ansible.builtin.assert:
+    that: item.stdout == 'true'
+    fail_msg: "Network {{ item.item }} exists but is not internal. Remove it and redeploy."
+  loop: "{{ stacks_internal_network_flag.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Bring stacks up
+  community.docker.docker_compose_v2:
+    project_src: "{{ stacks_root }}/{{ item.item.dest | default(item.item.path) }}"
+    state: present
+    remove_orphans: true
+    build: "{{ 'always' if (item.changed or stacks_update) else 'policy' }}"
+    pull: "{{ 'always' if stacks_update else 'policy' }}"
+  loop: "{{ stacks_copied.results }}"
+  loop_control:
+    label: "{{ item.item.path }}"
+
+# Bind-mounted config (Caddyfile, Prometheus/Grafana config) is only read at
+# startup, and 'up' doesn't recreate a container whose compose definition
+# didn't change.
+- name: Restart services whose config changed
+  community.docker.docker_compose_v2:
+    project_src: "{{ stacks_root }}/{{ item.item.dest | default(item.item.path) }}"
+    services: "{{ item.item.restart_on_config }}"
+    state: restarted
+  loop: "{{ stacks_copied.results }}"
+  loop_control:
+    label: "{{ item.item.path }}"
+  when: item.changed and item.item.restart_on_config is defined

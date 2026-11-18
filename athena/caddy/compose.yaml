@@ -1,0 +1,22 @@
+services:
+  caddy:
+    build: .
+    container_name: caddy
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "192.168.1.165:80:80"
+      - "192.168.1.165:443:443"
+      - "192.168.1.165:443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./data:/data
+      - ./config:/config
+    networks:
+      - proxy
+      - search
+networks:
+  proxy:
+    external: true
+  search:
+    external: true

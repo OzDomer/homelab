@@ -1,0 +1,25 @@
+title: |-
+  {{- $e := fromJSON .message -}}
+  {{- $p := toString $e.dst_port -}}
+  Canary: {{ $e.src_host }} hit
+  {{- if eq $p "21" }} FTP
+  {{- else if eq $p "23" }} Telnet
+  {{- else if eq $p "3306" }} MySQL
+  {{- else if eq $p "3389" }} RDP
+  {{- else if eq $p "5900" }} VNC
+  {{- else }} port {{ $p }}
+  {{- end }}
+message: |-
+  {{- $e := fromJSON .message -}}
+  {{- $p := toString $e.dst_port -}}
+  Attacker: {{ $e.src_host }}
+  Service:
+  {{- if eq $p "21" }} FTP
+  {{- else if eq $p "23" }} Telnet
+  {{- else if eq $p "3306" }} MySQL
+  {{- else if eq $p "3389" }} RDP
+  {{- else if eq $p "5900" }} VNC
+  {{- else }} unknown
+  {{- end }} (port {{ $p }})
+  Tried: {{ toJSON $e.logdata }}
+  Node: {{ $e.node_id }} · type {{ $e.logtype }}

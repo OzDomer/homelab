@@ -1,0 +1,4 @@
+ssh-ed25519 AAAA...replace-with-your-key admin-desktop
+ssh-ed25519 AAAA...replace-with-your-key admin-laptop
+ssh-ed25519 AAAA...replace-with-your-key ansible-control
+from="100.64.0.0/10",no-port-forwarding,no-agent-forwarding,no-X11-forwarding ssh-ed25519 AAAA...replace-with-your-key github-actions

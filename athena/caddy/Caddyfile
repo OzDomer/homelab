@@ -1,0 +1,56 @@
+*.example.com {
+	tls {
+		dns cloudflare {env.CF_API_TOKEN}
+		resolvers 1.1.1.1
+	}
+
+	@kuma host kuma.example.com
+	handle @kuma {
+		reverse_proxy uptime-kuma:3001
+	}
+
+	@dns host dns.example.com
+	handle @dns {
+		reverse_proxy adguard:80
+	}
+
+	@vault host vault.example.com
+	handle @vault {
+		reverse_proxy vaultwarden:80
+	}
+
+	@dns2 host dns2.example.com
+	handle @dns2 {
+		reverse_proxy 192.168.1.166:3000
+	}
+
+	@grafana host grafana.example.com
+	handle @grafana {
+		reverse_proxy grafana:3000
+	}
+
+	@search host search.example.com
+	handle @search {
+		reverse_proxy searxng:8080
+	}
+
+	@ntfy host ntfy.example.com
+	handle @ntfy {
+		reverse_proxy ntfy:80
+	}
+
+		@loki {
+		host loki.example.com
+		path /loki/api/v1/push
+	}
+	handle @loki {
+		basic_auth {
+			dionysus <bcrypt hash: caddy hash-password>
+		}
+		reverse_proxy loki:3100
+	}
+
+	handle {
+		abort
+	}
+}

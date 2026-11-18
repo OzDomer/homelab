@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# dionysus-backup-stage: copy dionysus's app config into a staging folder
+# that athena pulls (read-only, over SSH) and backs up with restic.
+# Runs nightly, before athena's backup.
+#
+# Config only: bulk data is never touched, and regenerable app data
+# (logs, caches, backups the apps make of themselves) is skipped.
+
+set -euo pipefail
+
+SRC=/home/domer/stacks/dionysus/apps/config
+STAGING=/var/backups/dionysus-staging
+PULL_USER=backup-pull
+
+# The parent dir is the lock: root + the pull user's group only, re-applied
+# every run. rsync -a copies the source's own (world-readable) permissions onto
+# its target, so the copy goes one level down where that can't leak anything.
+install -d -o root -g "$PULL_USER" -m 750 "$STAGING"
+
+echo "== Copying config"
+# --delete: files gone from the source disappear from staging too.
+# --delete-excluded: so does anything matching an exclude added later.
+# A leading / anchors a pattern to config/; without it, it matches at any depth.
+rsync -a --no-specials --delete --delete-excluded \
+    --exclude='logs/' --exclude='log/' --exclude='logs.db*' \
+    --exclude='Backups/' --exclude='cache/' --exclude='.cache/' \
+    --exclude='*-wal' --exclude='*-shm' \
+    "$SRC/" "$STAGING/config/"
+
+echo "== Snapshotting SQLite databases"
+# The copies above may be torn: the apps write while rsync reads. Replace each
+# with a consistent .backup taken from the live database.
+while IFS= read -r -d '' copy; do
+    rel=${copy#"$STAGING/config/"}
+    # Only real SQLite files (a .db name alone proves nothing)
+    [[ $(head -c 15 "$copy") == "SQLite format 3" ]] || continue
+    sqlite3 "$SRC/$rel" ".backup '$copy.tmp'"
+    result=$(sqlite3 "$copy.tmp" "PRAGMA integrity_check;")
+    if [[ $result != ok ]]; then
+        echo "Integrity check FAILED for $rel: $result" >&2
+        exit 1
+    fi
+    mv "$copy.tmp" "$copy"
+    echo "   $rel"
+done < <(find "$STAGING/config" -type f \( -name '*.db' -o -name '*.sqlite3' \) -print0)
+
+# Written only after everything above succeeded. athena refuses a stamp older
+# than ~25h, so a dead timer or a failing run shows up as a red backup.
+date +%s > "$STAGING/staged-at"
+
+chown -R root:"$PULL_USER" "$STAGING"
+chmod -R u=rwX,g=rX,o= "$STAGING"
+
+echo "== Staged $(du -sh "$STAGING/config" | cut -f1)"

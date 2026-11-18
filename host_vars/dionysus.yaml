@@ -1,0 +1,13 @@
+stacks_list:
+  - path: dionysus/dns
+  - path: dionysus/arena
+  - path: dionysus/monitoring
+  - path: dionysus/alloy
+    restart_on_config: [alloy]
+
+firewall_rules:
+  - from_ip: 192.168.1.165
+    to_ip: 192.168.1.166
+    port: 9100
+    proto: tcp
+    comment: athena prometheus -> node-exporter

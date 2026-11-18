@@ -1,0 +1,30 @@
+services:
+  ntfy:
+    image: binwiederhier/ntfy:v2.38.0
+    container_name: ntfy
+    restart: unless-stopped
+    command: serve
+    environment:
+      TZ: Asia/Jerusalem
+      NTFY_BASE_URL: https://ntfy.example.com
+      NTFY_BEHIND_PROXY: "true"
+      NTFY_CACHE_FILE: /var/lib/ntfy/cache.db
+      NTFY_AUTH_FILE: /var/lib/ntfy/auth.db
+      NTFY_AUTH_DEFAULT_ACCESS: deny-all
+      NTFY_ENABLE_LOGIN: "true"
+      NTFY_UPSTREAM_BASE_URL: https://ntfy.sh
+      NTFY_TEMPLATE_DIR: /etc/ntfy/templates
+
+    volumes:
+      - ./data:/var/lib/ntfy
+      - ./templates:/etc/ntfy/templates:ro
+    networks:
+      - proxy
+      - alerts
+    mem_limit: 64m
+
+networks:
+  proxy:
+    external: true
+  alerts:
+    external: true

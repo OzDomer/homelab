@@ -1,0 +1,4 @@
+# strategy: free in site.yaml is deliberate: no run_once is used, and the
+# two hosts don't depend on each other, so this warning doesn't apply.
+skip_list:
+  - run-once[play]

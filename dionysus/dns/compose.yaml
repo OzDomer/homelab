@@ -1,0 +1,33 @@
+services:
+  adguard:
+    image: adguard/adguardhome:v0.107.80
+    container_name: adguard
+    restart: unless-stopped
+    ports:
+      - "192.168.1.166:53:53/tcp"
+      - "192.168.1.166:53:53/udp"
+      - "192.168.1.166:3000:3000/tcp"
+    volumes:
+      - ./config/work:/opt/adguardhome/work
+      - ./config/conf:/opt/adguardhome/conf
+
+  adguardhome-sync:
+    image: ghcr.io/bakito/adguardhome-sync:v0.9.6
+    container_name: adguardhome-sync
+    restart: unless-stopped
+    command: run
+    depends_on:
+      - adguard
+    env_file: ./sync.env
+    environment:
+      - LOG_LEVEL=info
+      - ORIGIN_URL=https://dns.example.com
+      - REPLICA1_URL=http://adguard:3000
+      - CRON=*/10 * * * *
+      - RUN_ON_START=true
+      - API_PORT=0
+      - FEATURES_DHCP_SERVER_CONFIG=false
+      - FEATURES_DHCP_STATIC_LEASES=false
+      - FEATURES_TLS_CONFIG=false
+    extra_hosts:
+      - "dns.example.com:192.168.1.165"

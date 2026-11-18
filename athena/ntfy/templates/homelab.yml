@@ -1,0 +1,7 @@
+title: |-
+  {{- if eq .status "resolved" }}FIXED{{ else }}PROBLEM{{ end }}: {{ .commonLabels.alertname }}
+message: |-
+  {{- range $i, $a := .alerts }}{{ if $i }}{{ "\n\n" }}{{ end }}
+  {{- if eq $a.status "resolved" }}Back to normal: {{ end }}{{ $a.annotations.summary }}
+  {{- if and (ne $a.status "resolved") $a.annotations.description }}{{ "\n" }}{{ $a.annotations.description }}{{ end }}
+  {{- end }}

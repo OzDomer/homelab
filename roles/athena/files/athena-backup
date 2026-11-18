@@ -1,0 +1,182 @@
+#!/usr/bin/env bash
+# athena-backup: nightly restic backup of athena's app state to Google Drive.
+#
+# Every app is staged and snapshotted separately, so one broken app doesn't
+# block the others. Failures are collected and reported to Uptime Kuma at the end.
+
+# No -e here on purpose: each app runs in its own `set -e` subshell (see
+# run_app), and the main script keeps going when one of them fails.
+set -uo pipefail
+
+STACKS=/home/domer/stacks
+STAGING_ROOT=/var/backups/athena-staging
+GRAFANA_DB=/var/lib/docker/volumes/monitoring_grafana-data/_data/grafana.db
+
+export RESTIC_REPOSITORY="rclone:remote:backups"
+export RESTIC_PASSWORD_FILE=/root/restic-password
+export RESTIC_CACHE_DIR=/var/cache/restic
+
+# KUMA_PUSH_URL (kept out of git)
+# shellcheck source=/dev/null
+source /etc/athena-backup.env
+
+FAILED=()
+
+# ------------------------------------------------------------------ helpers
+
+# snapshot_sqlite SRC DEST: consistent copy of a live SQLite database, verified
+snapshot_sqlite() {
+    local src=$1 dest=$2 result
+    # sqlite3 silently creates a missing database, and an empty one passes
+    # integrity_check. Refuse anything that isn't a real, non-empty file.
+    if [[ ! -s $src ]]; then
+        echo "Source database missing or empty: $src" >&2
+        return 1
+    fi
+    sqlite3 "$src" ".backup '$dest'"
+    result=$(sqlite3 "$dest" "PRAGMA integrity_check;")
+    if [[ $result != ok ]]; then
+        echo "Integrity check FAILED: $result" >&2
+        return 1
+    fi
+}
+
+# require_rows DB TABLE: the table must exist and hold at least one row
+require_rows() {
+    local db=$1 table=$2 count
+    count=$(sqlite3 "$db" "SELECT count(*) FROM \"$table\";")
+    if (( count < 1 )); then
+        echo "$table is empty in $(basename "$db")" >&2
+        return 1
+    fi
+    echo "   $table: $count rows"
+}
+
+# copy_if_present SRC_DIR DEST ITEM...: copy whichever items exist
+copy_if_present() {
+    local src=$1 dest=$2 item
+    shift 2
+    for item in "$@"; do
+        if [[ -e $src/$item ]]; then
+            cp -a "$src/$item" "$dest/"
+        fi
+    done
+}
+
+# ------------------------------------------------------------------ apps
+
+stage_vaultwarden() {
+    local dest=$1 data=$STACKS/vaultwarden/data
+    snapshot_sqlite "$data/db.sqlite3" "$dest/db.sqlite3"
+    require_rows "$dest/db.sqlite3" users
+    require_rows "$dest/db.sqlite3" ciphers
+    copy_if_present "$data" "$dest" rsa_key.pem rsa_key.pub.pem config.json attachments sends
+}
+
+stage_kuma() {
+    local dest=$1 data=$STACKS/uptime-kuma/data
+    snapshot_sqlite "$data/kuma.db" "$dest/kuma.db"
+    require_rows "$dest/kuma.db" monitor
+    copy_if_present "$data" "$dest" db-config.json upload screenshots docker-tls
+}
+
+stage_adguard() {
+    local dest=$1 conf=$STACKS/adguard/conf/AdGuardHome.yaml
+    if [[ ! -s $conf ]]; then
+        echo "Config missing or empty: $conf" >&2
+        return 1
+    fi
+    cp -a "$conf" "$dest/"
+}
+
+stage_grafana() {
+    local dest=$1
+    snapshot_sqlite "$GRAFANA_DB" "$dest/grafana.db"
+    require_rows "$dest/grafana.db" user
+}
+
+stage_secrets() {
+    local dest=$1
+    # --parents keeps the full path (.../stacks/caddy/.env), so a restore
+    # shows exactly where each file goes back.
+    cp -a --parents "$STACKS"/*/.env /etc/athena-backup.env "$dest/"
+}
+
+stage_dionysus() {
+    local dest=$1 stamp age
+    # BatchMode: never prompt (unknown host key, missing key), fail instead.
+    # ConnectTimeout: dionysus off or asleep fails in 20 s, not minutes.
+    rsync -rlt --delete \
+        -e "ssh -i /root/.ssh/dionysus-pull -o BatchMode=yes -o ConnectTimeout=20" \
+        backup-pull@192.168.1.166:./ "$dest/"
+    # dionysus writes staged-at only after a complete, verified staging run
+    if [[ ! -s $dest/staged-at ]]; then
+        echo "No staged-at: dionysus staging didn't finish" >&2
+        return 1
+    fi
+    stamp=$(<"$dest/staged-at")
+    age=$(( $(date +%s) - stamp ))
+    if (( age > 25 * 3600 )); then
+        echo "dionysus staging is stale: $(( age / 3600 ))h old" >&2
+        return 1
+    fi
+    echo "   staged $(( age / 60 )) min ago"
+}
+
+# run_app NAME: stage NAME's files with stage_NAME, then snapshot them tagged NAME
+run_app() {
+    local app=$1 stage=$STAGING_ROOT/$1 status
+    echo "== $app"
+    # bash silently turns -e OFF inside anything tested by if/&&/||, even a
+    # subshell with its own `set -e`. So the subshell runs untested and its
+    # status is read on the next line instead.
+    (
+        set -e
+        mkdir -p "$stage"
+        "stage_$app" "$stage"
+        restic backup "$stage" --tag "$app" --host athena
+    )
+    status=$?
+    if (( status != 0 )); then
+        echo "!! $app FAILED (exit $status)" >&2
+        FAILED+=("$app")
+    fi
+}
+
+# ------------------------------------------------------------------ main
+
+rm -rf "$STAGING_ROOT"
+install -d -m 700 "$STAGING_ROOT"
+
+for app in vaultwarden kuma adguard grafana secrets dionysus; do
+    run_app "$app"
+done
+
+echo "== Applying retention"
+# Group by tags, not paths: the old vaultwarden snapshots used a different
+# staging path and would otherwise form their own group that never expires.
+restic forget --group-by host,tags --keep-daily 14 --keep-weekly 8 --keep-monthly 6 --prune \
+    || FAILED+=(retention)
+
+echo "== Checking repository"
+restic check || FAILED+=(check)
+
+rm -rf "$STAGING_ROOT"
+
+if (( ${#FAILED[@]} == 0 )); then
+    status=up msg=OK
+    echo "== Backup complete"
+else
+    status=down msg="failed: ${FAILED[*]}"
+    echo "!! Backup finished with failures: ${FAILED[*]}" >&2
+fi
+
+echo "== Notifying Uptime Kuma ($status)"
+# The URL Kuma gives you already ends in ?status=up&msg=OK&ping=.
+# Strip that query and send our own, so a failure actually shows as down.
+curl -fsS -m 10 --retry 3 -G "${KUMA_PUSH_URL%%\?*}" \
+    --data-urlencode "status=$status" --data-urlencode "msg=$msg" >/dev/null \
+    || echo "WARNING: could not reach Uptime Kuma" >&2
+
+# Exit non-zero on any failure, so systemd marks the run as failed too
+(( ${#FAILED[@]} == 0 ))

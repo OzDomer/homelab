@@ -1,0 +1,97 @@
+# --- packages
+# On trixie "dnsutils" is only a virtual name provided by bind9-dnsutils (dig,
+# nslookup), so the real package is listed. state: present, never latest.
+- name: Install packages dionysus needs
+  ansible.builtin.apt:
+    name: [network-manager, intel-microcode, curl, lm-sensors, bind9-dnsutils, unzip]
+    state: present
+    update_cache: true
+    cache_valid_time: 86400
+
+# network-manager pulls ModemManager in as a recommended package. There is no
+# cellular modem here, and it probes serial/USB devices as root.
+- name: Remove ModemManager
+  ansible.builtin.apt:
+    name: modemmanager
+    state: absent
+    purge: true
+
+# --- system
+- name: Install sysctl that lowers swappiness
+  ansible.builtin.copy:
+    src: 99-swappiness.conf
+    dest: /etc/sysctl.d/99-swappiness.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Apply swappiness sysctl
+
+- name: Create logind drop-in directory
+  ansible.builtin.file:
+    path: /etc/systemd/logind.conf.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install logind config that ignores the lid switch
+  ansible.builtin.copy:
+    src: 10-lid-ignore.conf
+    dest: /etc/systemd/logind.conf.d/10-lid-ignore.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart logind
+
+# --- backup staging (athena pulls it, see athena-backup)
+# Account first: the staging script chowns to its group.
+- name: Create backup-pull account
+  ansible.builtin.user:
+    name: backup-pull
+    system: true
+    create_home: true
+    home: /var/lib/backup-pull
+    shell: /bin/sh
+    password: "*"
+
+- name: Create backup-pull .ssh directory
+  ansible.builtin.file:
+    path: /var/lib/backup-pull/.ssh
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install backup-pull authorized_keys
+  ansible.builtin.copy:
+    src: backup-pull.authorized_keys
+    dest: /var/lib/backup-pull/.ssh/authorized_keys
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Install backup staging script
+  ansible.builtin.copy:
+    src: dionysus-backup-stage
+    dest: /usr/local/sbin/dionysus-backup-stage
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Install backup staging units
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: /etc/systemd/system/
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - dionysus-backup-stage.service
+    - dionysus-backup-stage.timer
+
+- name: Enable backup staging timer
+  ansible.builtin.systemd_service:
+    name: dionysus-backup-stage.timer
+    enabled: true
+    state: started
+    daemon_reload: true

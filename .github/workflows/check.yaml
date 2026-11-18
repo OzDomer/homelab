@@ -1,0 +1,53 @@
+name: Checks
+
+on:
+  push:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Ansible and ansible-lint
+        run: |
+          pipx install --include-deps ansible
+          pipx inject --include-apps ansible ansible-lint
+          ansible --version
+          ansible-lint --version
+
+      - name: ansible-lint
+        run: ansible-lint
+
+      - name: Playbook syntax
+        run: ansible-playbook site.yaml --syntax-check
+
+      - name: shellcheck
+        run: shellcheck roles/athena/files/athena-backup roles/athena/files/90-eee-off roles/dionysus/files/dionysus-backup-stage
+
+      - name: Compose files
+        run: |
+          # The real env files hold secrets and only exist on the hosts. Compose
+          # refuses to parse a stack whose env_file is missing, so give it empty
+          # stand-ins here (on the throwaway runner only, never committed).
+          touch athena/caddy/.env athena/monitoring/.env dionysus/dns/sync.env
+          for f in athena/*/compose.yaml dionysus/*/compose.yaml; do
+            echo "== $f"
+            docker compose -f "$f" config --quiet
+          done
+
+      - name: JSON files
+        run: |
+          for f in renovate.json athena/opencanary/opencanary.conf; do
+            echo "== $f"
+            python3 -m json.tool "$f" > /dev/null
+          done

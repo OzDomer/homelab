@@ -1,0 +1,105 @@
+name: Deploy homelab
+
+on:
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: Which hosts
+        type: choice
+        options: [homelab, athena, dionysus]
+        default: homelab
+      tags:
+        description: Which part
+        type: choice
+        options: [all, stacks, common, system]
+        default: all
+      update_images:
+        description: Pull and rebuild images
+        type: boolean
+        default: false
+      dry_run:
+        description: Dry run (check only, change nothing)
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-homelab
+  cancel-in-progress: false
+
+jobs:
+  checks:
+    uses: ./.github/workflows/check.yaml
+
+  deploy:
+    needs: checks
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      ANSIBLE_FORCE_COLOR: "1"
+      ANSIBLE_SSH_ARGS: "-o ControlMaster=auto -o ControlPersist=no"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Ansible
+        run: |
+          pipx install --force --include-deps ansible
+          ansible --version
+
+      - name: Join the tailnet as tag:ci
+        uses: tailscale/github-action@v3
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+          args: --accept-routes
+
+      - name: Prove the runner can only reach SSH
+        run: |
+          reachable() { timeout 5 bash -c "</dev/tcp/$1/$2" 2>/dev/null; }
+          for host in 192.168.1.165 192.168.1.166; do
+            reachable "$host" 22 || { echo "::error::cannot reach SSH on $host"; exit 1; }
+          done
+          for target in "192.168.1.165 443" "192.168.1.165 53" "192.168.1.166 3000"; do
+            if reachable $target; then
+              echo "::error::runner can reach ${target/ /:}, the Tailscale policy is too open"
+              exit 1
+            fi
+          done
+          echo "isolation ok: SSH reachable on both hosts, nothing else"
+
+      - name: Set up SSH and the sudo password
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          KNOWN_HOSTS: ${{ secrets.KNOWN_HOSTS }}
+          BECOME_PASSWORD: ${{ secrets.BECOME_PASSWORD }}
+        run: |
+          install -d -m 700 ~/.ssh
+          install -m 600 /dev/null ~/.ssh/id_ed25519
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          install -m 600 /dev/null "$RUNNER_TEMP/become"
+          printf '%s' "$BECOME_PASSWORD" > "$RUNNER_TEMP/become"
+
+      - name: Run playbook
+        env:
+          LIMIT: ${{ inputs.limit }}
+          TAGS: ${{ inputs.tags }}
+          UPDATE: ${{ inputs.update_images }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          args=(site.yaml --limit "$LIMIT" --diff --become-password-file "$RUNNER_TEMP/become")
+          if [[ $TAGS != all ]]; then args+=(--tags "$TAGS"); fi
+          if [[ $UPDATE == true ]]; then args+=(-e '{"stacks_update": true}'); fi
+          if [[ $DRY_RUN == true ]]; then args+=(--check); fi
+          ansible-playbook "${args[@]}"
+
+      - name: Close SSH connections and leave the tailnet
+        if: always()
+        run: |
+          pkill -f 'ssh: .*\[mux\]' || true
+          sudo tailscale logout || true
+          sudo pkill tailscaled || true

@@ -1,0 +1,50 @@
+services:
+  socket-proxy:
+    image: lscr.io/linuxserver/socket-proxy:3.4.7-r0-ls106
+    container_name: alloy-socket-proxy
+    restart: unless-stopped
+    environment:
+      CONTAINERS: "1"
+      NETWORKS: "1"
+      ALLOW_LOGS: "1"
+      POST: "0"
+      LOG_LEVEL: "warning"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    read_only: true
+    tmpfs:
+      - /run
+    networks:
+      - socket
+    mem_limit: 32m
+
+  alloy:
+    image: grafana/alloy:v1.22.0
+    container_name: alloy
+    restart: unless-stopped
+    command:
+      - run
+      - --disable-reporting
+      - --storage.path=/var/lib/alloy/data
+      - /etc/alloy/config.alloy
+    volumes:
+      - ./config.alloy:/etc/alloy/config.alloy:ro
+      - alloy-data:/var/lib/alloy/data
+      - /var/log/journal:/var/log/journal:ro
+      - /run/log/journal:/run/log/journal:ro
+      - /etc/machine-id:/etc/machine-id:ro
+    depends_on:
+      - socket-proxy
+    networks:
+      - socket
+      - proxy
+    mem_limit: 256m
+
+volumes:
+  alloy-data:
+
+networks:
+  socket:
+    internal: true
+  proxy:
+    external: true

@@ -1,0 +1,8 @@
+# Where SSH is allowed from (the LAN). Tailscale is allowed separately, per interface.
+firewall_ssh_from: 192.168.1.0/24
+
+# Extra host-specific ufw allow rules, set in host_vars. Each item: from_ip,
+# to_ip, port, and optionally proto (left out = tcp and udp) and comment.
+# The comment is part of the rule: it must match the host's exactly, or ufw
+# treats the rule as changed.
+firewall_rules: []

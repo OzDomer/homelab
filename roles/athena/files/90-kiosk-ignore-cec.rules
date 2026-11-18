@@ -1,0 +1,4 @@
+# Pi 5 HDMI-CEC inputs (vc4-hdmi-0/1) advertise remote-control mouse
+# emulation, so udev tags them as a pointing stick and cage draws a
+# cursor on Helios. Hide them from libinput; CEC itself keeps working.
+ACTION=="add|change", SUBSYSTEM=="input", KERNEL=="event*", ATTRS{name}=="vc4-hdmi-[01]", ENV{LIBINPUT_IGNORE_DEVICE}="1"
